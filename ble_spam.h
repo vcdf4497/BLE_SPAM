@@ -24,6 +24,16 @@ enum {
     ConfigLockKeyboard,
 };
 
+// Global settings indices
+enum {
+    SettingsTxPower = 0,
+    SettingsAdaptiveDelay,
+    SettingsLedIndicator,
+};
+
+// Index 7 maps to GapAdvPowerLevel_6dBm (maximum TX power available on the Flipper).
+#define ADV_POWER_DEFAULT 7
+
 typedef struct Attack Attack;
 
 typedef struct {
@@ -32,6 +42,8 @@ typedef struct {
     VariableItemListEnterCallback fallback_config_enter;
     bool led_indicator;
     bool lock_keyboard;
+    uint8_t adv_power;      // TX power level index (0–7, maps to GapAdvPowerLevel)
+    bool adaptive_delay;    // Use protocol-optimised advertising interval
 
     NotificationApp* notification;
     ViewDispatcher* view_dispatcher;
