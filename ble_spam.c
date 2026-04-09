@@ -157,11 +157,9 @@ static Attack attacks[] = {
 
 #define ATTACKS_COUNT ((signed)COUNT_OF(attacks))
 
-// ✅ FIXED: Adaptive delays per platform for optimal compatibility
-// iOS requires longer delays to avoid CPU throttling (80ms+)
-// Android needs balanced timing (60ms for GMS compatibility)  
-// Windows requires stable intervals (100ms for GATT stability)
-static uint16_t delays[] = {20, 30, 50, 100, 150};
+// Advertising interval options (ms).  Shorter = more packets per second = better reception.
+// 10 ms is the BLE-spec minimum and gives the highest spam rate.
+static uint16_t delays[] = {10, 20, 30, 50, 100, 150};
 
 // Platform-specific optimal delays - FIXED v7.0
 typedef struct {
@@ -235,7 +233,6 @@ typedef struct {
     FuriMutex* advertising_mutex;  // Race condition protection
     int8_t index;
     bool ignore_bruteforce;
-    bool use_adaptive_delay;  // New: adaptive delay feature
 } State;
 
 const NotificationSequence solid_message = {
@@ -283,8 +280,11 @@ static void start_extra_beacon(State* state) {
     Payload* payload = &attacks[state->index].payload;
     const Protocol* protocol = attacks[state->index].protocol;
 
-    // Use adaptive delay if enabled
-    if(state->use_adaptive_delay && protocol) {
+    // Apply user-selected TX power level (range control)
+    config->adv_power_level = state->ctx.adv_power;
+
+    // Use adaptive delay if enabled (protocol-optimal intervals)
+    if(state->ctx.adaptive_delay && protocol) {
         delay = get_optimal_delay_for_protocol(protocol);
     }
 
@@ -547,7 +547,7 @@ static void draw_callback(Canvas* canvas, void* _ctx) {
             "App+Spam: \e#WillyJL\e#\n"
             "Apple+Crash: \e#ECTO-1A\e#\n"
             "Android+Win: \e#Spooks4576\e#\n"
-            "                                   Version \e#" FAP_VERSION "\e#",
+            "Hold OK for \e#Settings\e# - v\e#" FAP_VERSION "\e#",
             false);
         break;
     default: {
@@ -670,6 +670,12 @@ static bool input_callback(InputEvent* input, void* _ctx) {
                 } else if(input->type == InputTypeShort) {
                     toggle_adv(state);
                 }
+            } else if(state->index == PageAboutCredits && input->type == InputTypeLong) {
+                // Long-press OK on the About page opens the global Settings scene
+                scene_manager_set_scene_state(state->ctx.scene_manager, SceneSettings, 0);
+                view_commit_model(view, consumed);
+                scene_manager_next_scene(state->ctx.scene_manager, SceneSettings);
+                return consumed;
             }
             break;
         case InputKeyUp:
@@ -810,10 +816,9 @@ int32_t ble_spam(void* p) {
     state->advertising_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     furi_check(state->advertising_mutex);
     
-    // NEW: Initialize adaptive delay feature
-    state->use_adaptive_delay = false;
-    
     state->ctx.led_indicator = true;
+    state->ctx.adv_power = ADV_POWER_DEFAULT;   // Maximum TX power (+6 dBm)
+    state->ctx.adaptive_delay = false;          // Default: manual delay control
     state->lock_timer = furi_timer_alloc(lock_timer_callback, FuriTimerTypeOnce, state);
 
     state->ctx.notification = furi_record_open(RECORD_NOTIFICATION);
